@@ -69,16 +69,17 @@ func (r *Registry) Load(cfg *config.Config) {
 	luaDir := filepath.Join(config.GetConfigDir(), "luaProviders")
 	files, err := os.ReadDir(luaDir)
 	if err != nil {
-		fmt.Printf("Error reading luaProviders directory: %v\n", err)
-		return
-	}
+		// fmt.Errorf("error reading lua providers directory: %v", err)
+		// TODO: Wtf do i do here? Considering if this doesnt load then nothing really
+		// bad happens except lua plugins dont load its not the end of the world
+	} else {
+		for _, file := range files {
+			if !file.IsDir() && filepath.Ext(file.Name()) == ".lua" {
 
-	for _, file := range files {
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".lua" {
-
-			// Pre create the providers so we can access their contents to regsiter them
-			lp := luaprovider.New(filepath.Join(luaDir, file.Name()))
-			register(lp.Name(), cfg.Providers.Lua, func() providers.Provider { return lp }, string(lp.Type()))
+				// Pre create the providers so we can access their contents to regsiter them
+				lp := luaprovider.New(filepath.Join(luaDir, file.Name()))
+				register(lp.Name(), cfg.Providers.Lua, func() providers.Provider { return lp }, string(lp.Type()))
+			}
 		}
 	}
 }

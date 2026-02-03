@@ -24,7 +24,7 @@ type LuaProvider struct {
 
 // --- Internal Mappers ---
 
-func (p *LuaProvider) toMediaSlice(v lua.LValue) []providers.Media {
+func (p *LuaProvider) ToMediaSlice(v lua.LValue) []providers.Media {
 	var list []providers.Media
 	if tbl, ok := v.(*lua.LTable); ok {
 		tbl.ForEach(func(_, val lua.LValue) {
@@ -43,7 +43,7 @@ func (p *LuaProvider) toMediaSlice(v lua.LValue) []providers.Media {
 	return list
 }
 
-func (p *LuaProvider) tableToStringSlice(lv lua.LValue) []string {
+func (p *LuaProvider) TableToStringSlice(lv lua.LValue) []string {
 	var slice []string
 	if tbl, ok := lv.(*lua.LTable); ok {
 		tbl.ForEach(func(_, v lua.LValue) {
@@ -53,7 +53,7 @@ func (p *LuaProvider) tableToStringSlice(lv lua.LValue) []string {
 	return slice
 }
 
-func fromGoValue(L *lua.LState, v interface{}) lua.LValue {
+func FromGoValue(L *lua.LState, v interface{}) lua.LValue {
 	switch val := v.(type) {
 	case string:
 		return lua.LString(val)
@@ -64,13 +64,13 @@ func fromGoValue(L *lua.LState, v interface{}) lua.LValue {
 	case map[string]interface{}:
 		tbl := L.NewTable()
 		for k, v := range val {
-			L.SetField(tbl, k, fromGoValue(L, v))
+			L.SetField(tbl, k, FromGoValue(L, v))
 		}
 		return tbl
 	case []interface{}:
 		tbl := L.NewTable()
 		for _, v := range val {
-			tbl.Append(fromGoValue(L, v))
+			tbl.Append(FromGoValue(L, v))
 		}
 		return tbl
 	default:
@@ -78,7 +78,8 @@ func fromGoValue(L *lua.LState, v interface{}) lua.LValue {
 	}
 }
 
-func pushSelection(L *lua.LState, s *goquery.Selection) *lua.LUserData {
+// PushSelection This is for allowing plugins to access some of goquery
+func PushSelection(L *lua.LState, s *goquery.Selection) *lua.LUserData {
 	ud := L.NewUserData()
 	ud.Value = s
 
@@ -92,7 +93,7 @@ func pushSelection(L *lua.LState, s *goquery.Selection) *lua.LUserData {
 			s := L.CheckUserData(1).Value.(*goquery.Selection)
 			selector := L.CheckString(2)
 			// Return a NEW wrapped selection
-			L.Push(pushSelection(L, s.Find(selector)))
+			L.Push(PushSelection(L, s.Find(selector)))
 			return 1
 		},
 		"text": func(L *lua.LState) int {
@@ -114,7 +115,7 @@ func pushSelection(L *lua.LState, s *goquery.Selection) *lua.LUserData {
 		},
 		"first": func(L *lua.LState) int {
 			s := L.CheckUserData(1).Value.(*goquery.Selection)
-			L.Push(pushSelection(L, s.First()))
+			L.Push(PushSelection(L, s.First()))
 			return 1
 		},
 		"length": func(L *lua.LState) int {
@@ -129,8 +130,11 @@ func pushSelection(L *lua.LState, s *goquery.Selection) *lua.LUserData {
 				// Call the Lua function for each element
 				L.Push(fn)
 				L.Push(lua.LNumber(i + 1)) // Lua is 1-indexed
-				L.Push(pushSelection(L, inner))
-				L.PCall(2, 0, nil)
+				L.Push(PushSelection(L, inner))
+				if err := L.PCall(2, 0, nil); err != nil {
+					// TODO: No clue what to do here either
+					// fmt.Errorf("Error calling Lua function in .each(): %v\n", err)
+				}
 			})
 			return 0
 		},
@@ -152,7 +156,7 @@ func New(LuaFile string) *LuaProvider {
 			L.Push(lua.LNil)
 			return 1
 		}
-		L.Push(pushSelection(L, doc.Selection))
+		L.Push(PushSelection(L, doc.Selection))
 		return 1
 	}))
 
@@ -166,7 +170,7 @@ func New(LuaFile string) *LuaProvider {
 			return 2
 		}
 
-		L.Push(fromGoValue(L, data))
+		L.Push(FromGoValue(L, data))
 		return 1
 	}))
 
@@ -249,7 +253,7 @@ func (p *LuaProvider) callLua(fnName string, args ...lua.LValue) (lua.LValue, er
 		Protect: true,
 	}, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
 
 	ret := p.L.Get(-1)
@@ -278,15 +282,15 @@ func (p *LuaProvider) Type() providers.MediaType {
 func (p *LuaProvider) Search(ctx context.Context, query string) ([]providers.Media, error) {
 	res, err := p.callLua("search", lua.LString(query))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
-	return p.toMediaSlice(res), nil
+	return p.ToMediaSlice(res), nil
 }
 
 func (p *LuaProvider) GetMediaDetails(ctx context.Context, id string) (*providers.MediaDetails, error) {
 	res, err := p.callLua("get_media_details", lua.LString(id))
 	if err != nil || res == lua.LNil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
 
 	tbl := res.(*lua.LTable)
@@ -298,7 +302,7 @@ func (p *LuaProvider) GetMediaDetails(ctx context.Context, id string) (*provider
 			PosterURL: p.L.GetField(tbl, "poster_url").String(),
 			Synopsis:  p.L.GetField(tbl, "synopsis").String(),
 			Status:    p.L.GetField(tbl, "status").String(),
-			Genres:    p.tableToStringSlice(p.L.GetField(tbl, "genres")),
+			Genres:    p.TableToStringSlice(p.L.GetField(tbl, "genres")),
 		},
 	}, nil
 }
@@ -306,7 +310,7 @@ func (p *LuaProvider) GetMediaDetails(ctx context.Context, id string) (*provider
 func (p *LuaProvider) GetSeasons(ctx context.Context, mediaID string) ([]providers.Season, error) {
 	res, err := p.callLua("get_seasons", lua.LString(mediaID))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
 
 	var seasons []providers.Season
@@ -325,7 +329,7 @@ func (p *LuaProvider) GetSeasons(ctx context.Context, mediaID string) ([]provide
 func (p *LuaProvider) GetEpisodes(ctx context.Context, seasonID string) ([]providers.Episode, error) {
 	res, err := p.callLua("get_episodes", lua.LString(seasonID))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
 
 	var episodes []providers.Episode
@@ -345,7 +349,7 @@ func (p *LuaProvider) GetEpisodes(ctx context.Context, seasonID string) ([]provi
 func (p *LuaProvider) GetStreamURL(ctx context.Context, episodeID string, quality providers.Quality) (*providers.StreamURL, error) {
 	res, err := p.callLua("get_stream_url", lua.LString(episodeID), lua.LString(string(quality)))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
 	return &providers.StreamURL{URL: res.String()}, nil
 }
@@ -353,7 +357,7 @@ func (p *LuaProvider) GetStreamURL(ctx context.Context, episodeID string, qualit
 func (p *LuaProvider) GetAvailableQualities(ctx context.Context, episodeID string) ([]providers.Quality, error) {
 	res, err := p.callLua("get_qualities", lua.LString(episodeID))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
 
 	var qualities []providers.Quality
@@ -368,25 +372,25 @@ func (p *LuaProvider) GetAvailableQualities(ctx context.Context, episodeID strin
 func (p *LuaProvider) GetTrending(ctx context.Context) ([]providers.Media, error) {
 	res, err := p.callLua("get_trending")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
-	return p.toMediaSlice(res), nil
+	return p.ToMediaSlice(res), nil
 }
 
 func (p *LuaProvider) GetRecent(ctx context.Context) ([]providers.Media, error) {
 	res, err := p.callLua("get_recent")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error calling lua, %w", err)
 	}
-	return p.toMediaSlice(res), nil
+	return p.ToMediaSlice(res), nil
 }
 
 func (p *LuaProvider) HealthCheck(ctx context.Context) error {
 	_, err := p.callLua("health_check")
-	return err
+	return fmt.Errorf("error calling lua, %w", err)
 }
 
 func (p *LuaProvider) GetInfo(id string) (interface{}, error) {
 	res, err := p.callLua("get_info", lua.LString(id))
-	return res, err
+	return res, fmt.Errorf("error calling lua, %w", err)
 }
