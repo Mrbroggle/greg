@@ -220,7 +220,7 @@ func (r *Registry) CheckAllProviders(ctx context.Context) {
 			urlMap := map[string]string{
 				"hianime":  "https://hianime.to",
 				"allanime": "https://allanime.to",
-				"sflix":    "https://sflix.to",
+				"sflix":    "https://sflixto.uk",
 				"flixhq":   "https://flixhq.to",
 				"hdrezka":  "https://hdrezka.me",
 				"comix":    "https://comick.io",
