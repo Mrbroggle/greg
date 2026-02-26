@@ -12,7 +12,7 @@ import (
 	"github.com/justchokingaround/greg/pkg/types"
 )
 
-// VidCloudExtractor handles extraction from VidCloud/UpCloud/AkCloud servers using dec.eatmynerds.live
+// VidCloudExtractor handles extraction from VidCloud/UpCloud/AkCloud servers using decrypt.broggl.farm
 type VidCloudExtractor struct {
 	Client *http.Client
 }
@@ -21,12 +21,12 @@ type VidCloudExtractor struct {
 func NewVidCloudExtractor() *VidCloudExtractor {
 	return &VidCloudExtractor{
 		Client: &http.Client{
-			Timeout: 15 * time.Second, // Reasonable timeout for dec.eatmynerds.live
+			Timeout: 15 * time.Second, // Reasonable timeout for decrypt.broggl.farm
 		},
 	}
 }
 
-// Extract extracts video sources from VidCloud/UpCloud/AkCloud URLs using dec.eatmynerds.live
+// Extract extracts video sources from VidCloud/UpCloud/AkCloud URLs using decrypt.broggl.farm
 func (v *VidCloudExtractor) Extract(sourceURL string) (*types.VideoSources, error) {
 	// Extract referer from sourceURL
 	parsedURL, err := url.Parse(sourceURL)
@@ -35,10 +35,10 @@ func (v *VidCloudExtractor) Extract(sourceURL string) (*types.VideoSources, erro
 		referer = fmt.Sprintf("%s://%s/", parsedURL.Scheme, parsedURL.Host)
 	}
 
-	// Construct the dec.eatmynerds.live URL
-	decURL := fmt.Sprintf("https://dec.eatmynerds.live/?url=%s", url.QueryEscape(sourceURL))
+	// Construct the decrypt.broggl.farm URL
+	decURL := fmt.Sprintf("https://decrypt.broggl.farm/?url=%s", url.QueryEscape(sourceURL))
 
-	// Make request to dec.eatmynerds.live
+	// Make request to decrypt.broggl.farm
 	req, err := http.NewRequest("GET", decURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating dec request: %w", err)
@@ -49,12 +49,12 @@ func (v *VidCloudExtractor) Extract(sourceURL string) (*types.VideoSources, erro
 
 	resp, err := v.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed fetching from dec.eatmynerds.live: %w", err)
+		return nil, fmt.Errorf("failed fetching from decrypt.broggl.farm: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("dec.eatmynerds.live returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("decrypt.broggl.farm returned status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -107,7 +107,7 @@ func (v *VidCloudExtractor) Extract(sourceURL string) (*types.VideoSources, erro
 	}
 
 	if len(videoSources) == 0 {
-		return nil, fmt.Errorf("no video sources found in dec.eatmynerds.live response")
+		return nil, fmt.Errorf("no video sources found in decrypt.broggl.farm response")
 	}
 
 	return &types.VideoSources{

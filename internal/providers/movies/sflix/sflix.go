@@ -25,7 +25,7 @@ type SFlix struct {
 
 func New() *SFlix {
 	return &SFlix{
-		BaseURL: "https://sflix.ps",
+		BaseURL: "https://sflixto.uk",
 		Client:  &http.Client{},
 	}
 }
